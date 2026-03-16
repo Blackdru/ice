@@ -6,10 +6,19 @@ import {
   AdEventType,
   RewardedAdEventType,
 } from 'react-native-google-mobile-ads';
+import {Platform} from 'react-native';
 
-const INTERSTITIAL_AD_UNIT = TestIds.INTERSTITIAL;
-const REWARDED_AD_UNIT = TestIds.REWARDED;
-export const BANNER_AD_UNIT = TestIds.BANNER;
+// Production Ad Unit IDs
+const PRODUCTION_APP_ID = 'ca-app-pub-3990640624622013~6072697403';
+const PRODUCTION_INTERSTITIAL = 'ca-app-pub-3990640624622013/1669218856';
+const PRODUCTION_BANNER = 'ca-app-pub-3990640624622013/8729451224';
+
+// Use test IDs in development, production IDs in release
+const __DEV__ = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
+
+const INTERSTITIAL_AD_UNIT = __DEV__ ? TestIds.INTERSTITIAL : PRODUCTION_INTERSTITIAL;
+const REWARDED_AD_UNIT = __DEV__ ? TestIds.REWARDED : TestIds.REWARDED; // Add production rewarded ID when available
+export const BANNER_AD_UNIT = __DEV__ ? TestIds.BANNER : PRODUCTION_BANNER;
 export const BANNER_SIZE = BannerAdSize.ANCHORED_ADAPTIVE_BANNER;
 
 const SWIPE_THRESHOLD = 8;

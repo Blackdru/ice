@@ -1,5 +1,6 @@
 import React from 'react';
 import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 import {colors} from '../theme/colors';
 import {typography} from '../theme/typography';
 
@@ -17,9 +18,14 @@ export function Header({title, subtitle, onBack, rightAction}: HeaderProps) {
         {onBack && (
           <TouchableOpacity
             onPress={onBack}
-            style={styles.backButton}
             hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-            <Text style={styles.backIcon}>{'\u2190'}</Text>
+            <LinearGradient
+              colors={['#FF6B9D', '#C471ED', '#00E5FF']}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 1}}
+              style={styles.backButton}>
+              <Text style={styles.backIcon}>←</Text>
+            </LinearGradient>
           </TouchableOpacity>
         )}
         <View style={styles.titleContainer}>
@@ -56,19 +62,19 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
     shadowColor: colors.shadow,
-    shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 3,
   },
   backIcon: {
-    fontSize: 20,
-    color: colors.textPrimary,
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.white,
   },
   titleContainer: {
     flex: 1,
