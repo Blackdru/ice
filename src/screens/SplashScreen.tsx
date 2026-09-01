@@ -1,15 +1,15 @@
-import React, {useEffect} from 'react';
-import {View, StyleSheet, Image, Animated} from 'react-native';
+import React, {useEffect, useRef} from 'react';
+import {StyleSheet, Image, Animated} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import {colors} from '../theme/colors';
+import {colors, gradientMain} from '../theme/colors';
 
 interface SplashScreenProps {
   onFinish: () => void;
 }
 
 export function SplashScreen({onFinish}: SplashScreenProps) {
-  const fadeAnim = new Animated.Value(0);
-  const scaleAnim = new Animated.Value(0.8);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -37,11 +37,11 @@ export function SplashScreen({onFinish}: SplashScreenProps) {
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [fadeAnim, scaleAnim, onFinish]);
 
   return (
     <LinearGradient
-      colors={['#0F0F23', '#1A1D3A']}
+      colors={[colors.background, colors.backgroundLight]}
       style={styles.container}>
       <Animated.View
         style={[
@@ -52,7 +52,7 @@ export function SplashScreen({onFinish}: SplashScreenProps) {
           },
         ]}>
         <LinearGradient
-          colors={['#FF6B9D', '#C471ED', '#00E5FF']}
+          colors={gradientMain}
           start={{x: 0, y: 0}}
           end={{x: 1, y: 1}}
           style={styles.logoGradient}>

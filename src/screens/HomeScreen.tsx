@@ -1,19 +1,19 @@
-import React, {useCallback} from 'react';
+import React, {useCallback, useMemo} from 'react';
 import {
   View,
   Text,
   FlatList,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
+  useWindowDimensions,
   Image,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {colors} from '../theme/colors';
+import {colors, gradientMain, gradientWarm} from '../theme/colors';
 import {CategoryCard} from '../components/CategoryCard';
-import {getCategories, getTotalQuestionCount} from '../utils/questionEngine';
+import {getCategories} from '../utils/questionEngine';
 import type {RootStackParamList} from '../navigation/AppNavigator';
 
 type HomeScreenProps = {
@@ -22,8 +22,9 @@ type HomeScreenProps = {
 
 export function HomeScreen({navigation}: HomeScreenProps) {
   const insets = useSafeAreaInsets();
-  const categories = getCategories();
-  const totalCount = getTotalQuestionCount();
+  const {width} = useWindowDimensions();
+  const categories = useMemo(() => getCategories(), []);
+  const cardWidth = (width - 44) / 2;
 
   const navigateToCategory = useCallback(
     (categoryId: string) => {
@@ -42,18 +43,17 @@ export function HomeScreen({navigation}: HomeScreenProps) {
 
   const renderCategory = useCallback(
     ({item, index}: {item: (typeof categories)[0]; index: number}) => (
-      <View style={index % 2 === 0 ? styles.leftCard : styles.rightCard}>
+      <View style={index % 2 === 0 ? {width: cardWidth} : {width: cardWidth}}>
         <CategoryCard
           id={item.id}
           title={item.title}
           emoji={item.emoji}
-          description={item.description}
           questionCount={item.questions.length}
           onPress={() => navigateToCategory(item.id)}
         />
       </View>
     ),
-    [navigateToCategory],
+    [navigateToCategory, cardWidth],
   );
 
   const ListHeader = useCallback(
@@ -62,7 +62,7 @@ export function HomeScreen({navigation}: HomeScreenProps) {
         {/* Hero Section */}
         <View style={styles.heroContainer}>
           <LinearGradient
-            colors={['#FF6B9D', '#C471ED', '#00E5FF']}
+            colors={gradientMain}
             start={{x: 0, y: 0}}
             end={{x: 1, y: 1}}
             style={styles.heroGradientBorder}>
@@ -79,7 +79,7 @@ export function HomeScreen({navigation}: HomeScreenProps) {
                 <View style={styles.heroTop}>
                   <View style={styles.logoWrapper}>
                     <LinearGradient
-                      colors={['#FF6B9D', '#C471ED', '#00E5FF']}
+                      colors={gradientMain}
                       start={{x: 0, y: 0}}
                       end={{x: 1, y: 1}}
                       style={styles.logoGradient}>
@@ -109,7 +109,7 @@ export function HomeScreen({navigation}: HomeScreenProps) {
               style={styles.quickActionWrapper}
               activeOpacity={0.8}>
               <LinearGradient
-                colors={['#FF6B9D', '#C471ED', '#00E5FF']}
+                colors={[...gradientMain]}
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 0}}
                 style={styles.quickActionButton}>
@@ -128,7 +128,7 @@ export function HomeScreen({navigation}: HomeScreenProps) {
               style={styles.quickActionWrapper}
               activeOpacity={0.8}>
               <LinearGradient
-                colors={['#FF6B9D', '#FF8C42']}
+                colors={gradientWarm}
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 0}}
                 style={styles.quickActionButton}>
@@ -151,7 +151,7 @@ export function HomeScreen({navigation}: HomeScreenProps) {
         </View>
       </View>
     ),
-    [totalCount, categories.length, navigateToRandom, navigateToFavorites],
+    [navigateToRandom, navigateToFavorites],
   );
 
   return (
@@ -173,8 +173,6 @@ export function HomeScreen({navigation}: HomeScreenProps) {
   );
 }
 
-const {width} = Dimensions.get('window');
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -193,7 +191,7 @@ const styles = StyleSheet.create({
   heroGradientBorder: {
     borderRadius: 24,
     padding: 2,
-    shadowColor: '#00E5FF',
+    shadowColor: colors.gradientCyan,
     shadowOffset: {width: 0, height: 8},
     shadowOpacity: 0.4,
     shadowRadius: 20,
@@ -220,21 +218,21 @@ const styles = StyleSheet.create({
   heroCircle1: {
     width: 150,
     height: 150,
-    backgroundColor: '#FF6B9D',
+    backgroundColor: colors.gradientPink,
     top: -50,
     right: -30,
   },
   heroCircle2: {
     width: 100,
     height: 100,
-    backgroundColor: '#C471ED',
+    backgroundColor: colors.gradientPurple,
     bottom: -20,
     left: -20,
   },
   heroCircle3: {
     width: 80,
     height: 80,
-    backgroundColor: '#00E5FF',
+    backgroundColor: colors.gradientCyan,
     top: 40,
     left: 20,
   },
@@ -282,40 +280,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.textSecondary,
     letterSpacing: 0.2,
-  },
-  statsContainer: {
-    marginTop: 4,
-  },
-  statsGradient: {
-    borderRadius: 16,
-    padding: 2,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 14,
-    backgroundColor: colors.card,
-  },
-  statNumber: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.accent,
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  statLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    letterSpacing: 0.3,
-  },
-  statDivider: {
-    width: 1,
-    height: '60%',
-    backgroundColor: colors.border,
-    position: 'absolute',
-    left: '50%',
-    top: '20%',
   },
   quickActionsContainer: {
     marginBottom: 28,
@@ -393,11 +357,5 @@ const styles = StyleSheet.create({
   },
   row: {
     justifyContent: 'space-between',
-  },
-  leftCard: {
-    width: (width - 44) / 2,
-  },
-  rightCard: {
-    width: (width - 44) / 2,
   },
 });

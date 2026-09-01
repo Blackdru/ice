@@ -1,14 +1,12 @@
 import React from 'react';
 import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import {colors, categoryColors} from '../theme/colors';
-import {typography} from '../theme/typography';
+import {colors, gradientMain, categoryColors} from '../theme/colors';
 
 interface CategoryCardProps {
   id: string;
   title: string;
   emoji: string;
-  description: string;
   questionCount: number;
   onPress: () => void;
 }
@@ -17,7 +15,6 @@ export const CategoryCard = React.memo(function CategoryCard({
   id,
   title,
   emoji,
-  description,
   questionCount,
   onPress,
 }: CategoryCardProps) {
@@ -29,7 +26,7 @@ export const CategoryCard = React.memo(function CategoryCard({
       activeOpacity={0.8}
       style={styles.wrapper}>
       <LinearGradient
-        colors={['#FF6B9D', '#C471ED', '#00D9FF']}
+        colors={[...gradientMain]}
         start={{x: 0, y: 0}}
         end={{x: 1, y: 1}}
         style={styles.gradientBorder}>
@@ -75,7 +72,7 @@ const styles = StyleSheet.create({
   gradientBorder: {
     borderRadius: 20,
     padding: 2,
-    shadowColor: '#00E5FF',
+    shadowColor: colors.gradientCyan,
     shadowOffset: {width: 0, height: 6},
     shadowOpacity: 0.3,
     shadowRadius: 12,

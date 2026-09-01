@@ -1,4 +1,4 @@
-package com.iceb
+package com.budrock.iceb
 
 import android.app.Application
 import com.facebook.react.PackageList

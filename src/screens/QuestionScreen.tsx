@@ -1,16 +1,16 @@
-import React, {useCallback, useEffect} from 'react';
-import {View, StyleSheet} from 'react-native';
+import React, {useCallback} from 'react';
+import {View, StyleSheet, ActivityIndicator} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {BannerAd} from 'react-native-google-mobile-ads';
 import {colors} from '../theme/colors';
 import {Header} from '../components/Header';
+import {AdBanner} from '../components/AdBanner';
 import {QuestionCard} from '../components/QuestionCard';
 import {useQuestions} from '../hooks/useQuestions';
 import {useFavorites} from '../hooks/useFavorites';
 import {getCategoryById} from '../utils/questionEngine';
-import {trackSwipe, BANNER_AD_UNIT, BANNER_SIZE, initializeAds} from '../services/adService';
+import {trackSwipe} from '../services/adService';
 import type {RootStackParamList} from '../navigation/AppNavigator';
 
 type QuestionScreenProps = {
@@ -22,17 +22,15 @@ export function QuestionScreen({navigation, route}: QuestionScreenProps) {
   const {categoryId} = route.params;
   const insets = useSafeAreaInsets();
   const category = getCategoryById(categoryId);
-  const {currentQuestion, currentIndex, totalCount, goToNext, goToPrevious} =
-    useQuestions(categoryId);
+  const {
+    currentQuestion,
+    currentIndex,
+    totalCount,
+    loading,
+    goToNext,
+    goToPrevious,
+  } = useQuestions(categoryId);
   const {isFavorite, toggleFavorite} = useFavorites();
-
-  useEffect(() => {
-    try {
-      initializeAds();
-    } catch (error) {
-      console.warn('Failed to initialize ads:', error);
-    }
-  }, []);
 
   const handleSwipeLeft = useCallback(() => {
     trackSwipe();
@@ -43,11 +41,13 @@ export function QuestionScreen({navigation, route}: QuestionScreenProps) {
     goToPrevious();
   }, [goToPrevious]);
 
+  const activeCategoryId = currentQuestion?.categoryId || categoryId;
+
   const handleToggleFavorite = useCallback(() => {
     if (currentQuestion) {
-      toggleFavorite(currentQuestion, categoryId);
+      toggleFavorite(currentQuestion, activeCategoryId);
     }
-  }, [currentQuestion, categoryId, toggleFavorite]);
+  }, [currentQuestion, activeCategoryId, toggleFavorite]);
 
   const title =
     categoryId === 'random'
@@ -60,32 +60,29 @@ export function QuestionScreen({navigation, route}: QuestionScreenProps) {
 
   return (
     <View style={[styles.container, {paddingTop: insets.top}]}>
-        <Header
-          title={title}
-          subtitle={subtitle}
-          onBack={() => navigation.goBack()}
-        />
+      <Header
+        title={title}
+        subtitle={subtitle}
+        onBack={() => navigation.goBack()}
+      />
 
-        {currentQuestion && (
-          <QuestionCard
-            question={currentQuestion}
-            categoryId={categoryId}
-            isFavorite={isFavorite(currentQuestion.id, categoryId)}
-            onToggleFavorite={handleToggleFavorite}
-            onSwipeLeft={handleSwipeLeft}
-            onSwipeRight={handleSwipeRight}
-            currentIndex={currentIndex}
-            totalCount={totalCount}
-          />
-        )}
-
-        <View style={[styles.bannerContainer, {paddingBottom: insets.bottom}]}>
-          <BannerAd
-            unitId={BANNER_AD_UNIT}
-            size={BANNER_SIZE}
-            requestOptions={{requestNonPersonalizedAdsOnly: true}}
-          />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
+      ) : currentQuestion ? (
+        <QuestionCard
+          question={currentQuestion}
+          isFavorite={isFavorite(currentQuestion.id, activeCategoryId)}
+          onToggleFavorite={handleToggleFavorite}
+          onSwipeLeft={handleSwipeLeft}
+          onSwipeRight={handleSwipeRight}
+          currentIndex={currentIndex}
+          totalCount={totalCount}
+        />
+      ) : null}
+
+      <AdBanner style={{paddingBottom: insets.bottom}} />
     </View>
   );
 }
@@ -95,8 +92,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  bannerContainer: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
   },
 });

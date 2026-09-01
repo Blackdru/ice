@@ -1,4 +1,4 @@
-package com.iceb
+package com.budrock.iceb
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

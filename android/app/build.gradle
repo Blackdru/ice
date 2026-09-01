@@ -57,7 +57,7 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -72,18 +72,24 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.iceb"
+    namespace "com.budrock.iceb"
     defaultConfig {
-        applicationId "com.iceb"
+        applicationId "com.budrock.iceb"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 3
+        versionName "0.3"
     }
     signingConfigs {
         debug {
@@ -93,10 +99,12 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file('my-upload-key.keystore')
-            storePassword 'AAnd123'
-            keyAlias 'my-key-alias'
-            keyPassword 'AAnd123'
+            if (keystoreProperties.size() > 0) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
         }
     }
     buildTypes {
@@ -123,3 +131,25 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+
+// Fix autolinking generated file to use correct package name
+afterEvaluate {
+    tasks.configureEach { task ->
+        if (task.name.contains('compileDebugJavaWithJavac') || task.name.contains('compileReleaseJavaWithJavac')) {
+            task.doFirst {
+                def autolinkingFile = file("$buildDir/generated/autolinking/src/main/java/com/facebook/react/ReactNativeApplicationEntryPoint.java")
+                if (autolinkingFile.exists()) {
+                    def content = autolinkingFile.text
+                    if (content.contains('com.iceb.BuildConfig')) {
+                        content = content.replace('com.iceb.BuildConfig', 'com.budrock.iceb.BuildConfig')
+                        autolinkingFile.text = content
+                        println "Fixed autolinking file: replaced com.iceb.BuildConfig with com.budrock.iceb.BuildConfig"
+                    }
+                }
+            }
+        }
+    }
+}
+
+apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")

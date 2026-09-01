@@ -1,26 +1,35 @@
-import React, {useState, useCallback, useRef} from 'react';
+import React, {useState, useCallback, useRef, useEffect} from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
-  Share,
+  useWindowDimensions,
   Platform,
   Animated,
   PanResponder,
+  Alert,
 } from 'react-native';
+import {colors, gradientMain, gradientWarm} from '../theme/colors';
+import Clipboard from '@react-native-clipboard/clipboard';
 import LinearGradient from 'react-native-linear-gradient';
-import {colors} from '../theme/colors';
+import Share from 'react-native-share';
+import ViewShot from 'react-native-view-shot';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import {typography} from '../theme/typography';
 import {Question} from '../data/questions';
+import {ShareableCard} from './ShareableCard';
 
-const {width: SCREEN_WIDTH} = Dimensions.get('window');
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
+// Top-level import with safe fallback for haptic feedback
+let HapticFeedback: {trigger: (type: string, options?: object) => void} | null = null;
+try {
+  HapticFeedback = require('react-native-haptic-feedback').default;
+} catch {
+  // haptic feedback not available on this platform
+}
 
 interface QuestionCardProps {
   question: Question;
-  categoryId: string;
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onSwipeLeft: () => void;
@@ -29,7 +38,7 @@ interface QuestionCardProps {
   totalCount: number;
 }
 
-export function QuestionCard({
+export const QuestionCard = React.memo(function QuestionCard({
   question,
   isFavorite,
   onToggleFavorite,
@@ -39,19 +48,18 @@ export function QuestionCard({
   totalCount,
 }: QuestionCardProps) {
   const [showFollowUp, setShowFollowUp] = useState(false);
+  const {width: screenWidth} = useWindowDimensions();
+  const swipeThreshold = screenWidth * 0.25;
+
   const translateX = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const shareableCardRef = useRef<ViewShot>(null);
 
   const triggerHaptic = useCallback(() => {
-    try {
-      const ReactNativeHapticFeedback = require('react-native-haptic-feedback').default;
-      ReactNativeHapticFeedback.trigger('impactLight', {
-        enableVibrateFallback: true,
-        ignoreAndroidSystemSettings: false,
-      });
-    } catch {
-      // haptic not available
-    }
+    HapticFeedback?.trigger('impactLight', {
+      enableVibrateFallback: true,
+      ignoreAndroidSystemSettings: false,
+    });
   }, []);
 
   const handleSwipeLeft = useCallback(() => {
@@ -66,6 +74,12 @@ export function QuestionCard({
     onSwipeRight();
   }, [onSwipeRight, triggerHaptic]);
 
+  // Keep references to handlers updated for PanResponder to prevent stale closures
+  const callbacksRef = useRef({handleSwipeLeft, handleSwipeRight, screenWidth, swipeThreshold});
+  useEffect(() => {
+    callbacksRef.current = {handleSwipeLeft, handleSwipeRight, screenWidth, swipeThreshold};
+  }, [handleSwipeLeft, handleSwipeRight, screenWidth, swipeThreshold]);
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -75,22 +89,29 @@ export function QuestionCard({
         translateX.setValue(gestureState.dx);
       },
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dx < -SWIPE_THRESHOLD) {
+        const {
+          handleSwipeLeft: swipeLeft,
+          handleSwipeRight: swipeRight,
+          screenWidth: width,
+          swipeThreshold: threshold,
+        } = callbacksRef.current;
+
+        if (gestureState.dx < -threshold) {
           Animated.timing(translateX, {
-            toValue: -SCREEN_WIDTH,
+            toValue: -width,
             duration: 200,
             useNativeDriver: true,
           }).start(() => {
-            handleSwipeLeft();
+            swipeLeft();
             translateX.setValue(0);
           });
-        } else if (gestureState.dx > SWIPE_THRESHOLD) {
+        } else if (gestureState.dx > threshold) {
           Animated.timing(translateX, {
-            toValue: SCREEN_WIDTH,
+            toValue: width,
             duration: 200,
             useNativeDriver: true,
           }).start(() => {
-            handleSwipeRight();
+            swipeRight();
             translateX.setValue(0);
           });
         } else {
@@ -106,16 +127,16 @@ export function QuestionCard({
   ).current;
 
   const rotate = translateX.interpolate({
-    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+    inputRange: [-screenWidth, 0, screenWidth],
     outputRange: ['-8deg', '0deg', '8deg'],
   });
 
   const opacity = translateX.interpolate({
-    inputRange: [-SCREEN_WIDTH * 0.8, 0, SCREEN_WIDTH * 0.8],
+    inputRange: [-screenWidth * 0.8, 0, screenWidth * 0.8],
     outputRange: [0.5, 1, 0.5],
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 300,
@@ -123,170 +144,218 @@ export function QuestionCard({
     }).start();
   }, [fadeAnim]);
 
+  const handleCopyQuestion = async () => {
+    try {
+      triggerHaptic();
+      Clipboard.setString(question.question);
+      Alert.alert('Copied!', 'Question copied to clipboard');
+    } catch {
+      Alert.alert('Error', 'Failed to copy question');
+    }
+  };
+
   const handleShare = async () => {
     try {
-      await Share.share({
-        message: `Conversation Starter:\n\n"${question.question}"\n\nShared from IceB`,
-      });
-    } catch {
-      // share cancelled
+      triggerHaptic();
+      if (shareableCardRef.current && shareableCardRef.current.capture) {
+        const uri = await shareableCardRef.current.capture();
+        await Share.open({
+          url: Platform.OS === 'ios' ? uri : `file://${uri}`,
+          message: 'Check out this conversation starter from IceB!',
+        });
+      }
+    } catch (error: unknown) {
+      const shareError = error as {message?: string};
+      if (shareError?.message !== 'User did not share') {
+        console.error('Share error:', error);
+      }
     }
   };
 
   return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.cardWrapper,
-        {
-          transform: [{translateX}, {rotate}],
-          opacity,
-        },
-      ]}>
-      <Animated.View style={[styles.cardContainer, {opacity: fadeAnim}]}>
-        {/* Background gradient cards stack effect */}
-        <View style={styles.cardStack}>
+    <>
+      {/* Hidden shareable card for screenshots - only question and watermark */}
+      <View style={styles.hiddenCard}>
+        <ShareableCard ref={shareableCardRef} questionText={question.question} />
+      </View>
+
+      {/* Visible interactive card */}
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.cardWrapper,
+          {
+            transform: [{translateX}, {rotate}],
+            opacity,
+          },
+        ]}>
+        <Animated.View style={[styles.cardContainer, {opacity: fadeAnim}]}>
+          {/* Background gradient cards stack effect */}
+          <View style={styles.cardStack}>
+            <LinearGradient
+              colors={[colors.gradientYellow, colors.gradientOrange]}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 1}}
+              style={[styles.stackCard, styles.stackCard3]}
+            />
+            <LinearGradient
+              colors={[colors.gradientOrange, colors.gradientPink]}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 1}}
+              style={[styles.stackCard, styles.stackCard2]}
+            />
+          </View>
+
+          {/* Main card with gradient border */}
           <LinearGradient
-            colors={['#FFD93D', '#FF8C42']}
+            colors={gradientMain}
             start={{x: 0, y: 0}}
             end={{x: 1, y: 1}}
-            style={[styles.stackCard, styles.stackCard3]}
-          />
-          <LinearGradient
-            colors={['#FF8C42', '#FF6B9D']}
-            start={{x: 0, y: 0}}
-            end={{x: 1, y: 1}}
-            style={[styles.stackCard, styles.stackCard2]}
-          />
-        </View>
-
-        {/* Main card with gradient border */}
-        <LinearGradient
-          colors={['#FF6B9D', '#C471ED', '#00E5FF']}
-          start={{x: 0, y: 0}}
-          end={{x: 1, y: 1}}
-          style={styles.gradientBorder}>
-          <View style={styles.card}>
-            {/* Top bar with progress */}
-            <View style={styles.topBar}>
-              <View style={styles.progressDots}>
-                {Array.from({length: Math.min(totalCount, 5)}).map((_, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.dot,
-                      i === currentIndex % 5 && styles.dotActive,
-                    ]}
-                  />
-                ))}
-              </View>
-              <View style={styles.counterBadge}>
-                <Text style={styles.counterText}>
-                  {currentIndex + 1}/{totalCount}
-                </Text>
-              </View>
-            </View>
-
-            {/* Question content */}
-            <View style={styles.contentArea}>
-              <View style={styles.questionHeader}>
-                <View style={styles.quoteIcon}>
-                  <Text style={styles.quoteText}>"</Text>
+            style={styles.gradientBorder}>
+            <View style={styles.card}>
+              {/* Top bar with progress */}
+              <View style={styles.topBar}>
+                <View style={styles.progressDots}>
+                  {Array.from({length: Math.min(totalCount, 5)}).map((_, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.dot,
+                        i === currentIndex % 5 && styles.dotActive,
+                      ]}
+                    />
+                  ))}
+                </View>
+                <View style={styles.topBarRight}>
+                  <View style={styles.counterBadge}>
+                    <Text style={styles.counterText}>
+                      {currentIndex + 1}/{totalCount}
+                    </Text>
+                  </View>
                 </View>
               </View>
 
-              <Text style={styles.questionText}>{question.question}</Text>
-
-              {showFollowUp && (
-                <View style={styles.followUpSection}>
-                  <LinearGradient
-                    colors={['rgba(0, 229, 255, 0.15)', 'rgba(196, 113, 237, 0.15)']}
-                    start={{x: 0, y: 0}}
-                    end={{x: 1, y: 0}}
-                    style={styles.followUpGradient}>
-                    <View style={styles.followUpContent}>
-                      <Text style={styles.followUpLabel}>💭 Follow-up</Text>
-                      <Text style={styles.followUpText}>{question.followup}</Text>
-                    </View>
-                  </LinearGradient>
-                </View>
-              )}
-            </View>
-
-            {/* Bottom actions */}
-            <View style={styles.bottomSection}>
-              {!showFollowUp && (
+              {/* Copy button below counter */}
+              <View style={styles.copyButtonContainer}>
                 <TouchableOpacity
-                  onPress={() => {
-                    triggerHaptic();
-                    setShowFollowUp(true);
-                  }}
-                  activeOpacity={0.8}>
-                  <LinearGradient
-                    colors={['#00E5FF', '#C471ED']}
-                    start={{x: 0, y: 0}}
-                    end={{x: 1, y: 0}}
-                    style={styles.revealButton}>
-                    <Text style={styles.revealButtonText}>Show Follow-up Question</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              )}
-
-              <View style={styles.actionBar}>
-                <TouchableOpacity
-                  onPress={() => {
-                    triggerHaptic();
-                    onToggleFavorite();
-                  }}
-                  style={styles.actionButtonWrapper}
+                  onPress={handleCopyQuestion}
+                  style={styles.copyButton}
                   activeOpacity={0.7}>
-                  <LinearGradient
-                    colors={isFavorite ? ['#FF6B9D', '#FF8C42'] : ['#2D3748', '#1E2A4A']}
-                    start={{x: 0, y: 0}}
-                    end={{x: 1, y: 0}}
-                    style={styles.actionButton}>
-                    <Text style={[styles.actionIcon, isFavorite && styles.actionIconActive]}>
-                      {isFavorite ? '\u2665' : '\u2661'}
-                    </Text>
-                    <Text style={[styles.actionText, isFavorite && styles.actionTextActive]}>
-                      {isFavorite ? 'Saved' : 'Save'}
-                    </Text>
-                  </LinearGradient>
+                  <Icon name="content-copy" size={16} color={colors.accent} />
                 </TouchableOpacity>
+              </View>
 
-               
+              {/* Question content */}
+              <View style={styles.contentArea}>
+                <View style={styles.questionHeader}>
+                  <View style={styles.quoteIcon}>
+                    <Text style={styles.quoteText}>"</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.questionText}>{question.question}</Text>
+
+                {showFollowUp && (
+                  <View style={styles.followUpSection}>
+                    <LinearGradient
+                      colors={['rgba(0, 229, 255, 0.15)', 'rgba(196, 113, 237, 0.15)']}
+                      start={{x: 0, y: 0}}
+                      end={{x: 1, y: 0}}
+                      style={styles.followUpGradient}>
+                      <View style={styles.followUpContent}>
+                        <Text style={styles.followUpLabel}>💭 Follow-up</Text>
+                        <Text style={styles.followUpText}>{question.followup}</Text>
+                      </View>
+                    </LinearGradient>
+                  </View>
+                )}
+              </View>
+
+              {/* Watermark */}
+              <View style={styles.watermark}>
+                <Text style={styles.watermarkText}>IceB</Text>
+              </View>
+
+              {/* Bottom actions */}
+              <View style={styles.bottomSection}>
+                {!showFollowUp && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      triggerHaptic();
+                      setShowFollowUp(true);
+                    }}
+                    activeOpacity={0.8}>
+                    <LinearGradient
+                      colors={[colors.gradientCyan, colors.gradientPurple]}
+                      start={{x: 0, y: 0}}
+                      end={{x: 1, y: 0}}
+                      style={styles.revealButton}>
+                      <Text style={styles.revealButtonText}>Show Follow-up Question</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+
+                <View style={styles.actionBar}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      triggerHaptic();
+                      onToggleFavorite();
+                    }}
+                    style={styles.actionButtonWrapper}
+                    activeOpacity={0.7}>
+                    <LinearGradient
+                      colors={isFavorite ? gradientWarm : [colors.border, colors.primaryLight]}
+                      start={{x: 0, y: 0}}
+                      end={{x: 1, y: 0}}
+                      style={styles.actionButton}>
+                      <Icon 
+                        name={isFavorite ? 'favorite' : 'favorite-border'} 
+                        size={18} 
+                        color={isFavorite ? colors.white : colors.textSecondary} 
+                      />
+                      <Text style={[styles.actionText, isFavorite && styles.actionTextActive]}>
+                        {isFavorite ? 'Saved' : 'Save'}
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+
                   <View style={styles.swipeRow}>
                     <Text style={styles.swipeArrow}>←</Text>
                     <Text style={styles.swipeText}>Swipe</Text>
                     <Text style={styles.swipeArrow}>→</Text>
                   </View>
-                
 
-                <TouchableOpacity
-                  onPress={handleShare}
-                  style={styles.actionButtonWrapper}
-                  activeOpacity={0.7}>
-                  <LinearGradient
-                    colors={['#2D3748', '#1E2A4A']}
-                    start={{x: 0, y: 0}}
-                    end={{x: 1, y: 0}}
-                    style={styles.actionButton}>
-                    <Text style={styles.actionIcon}>
-                      {Platform.OS === 'ios' ? '\u{1F4E4}' : '\u{1F517}'}
-                    </Text>
-                    <Text style={styles.actionText}>Share</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleShare}
+                    style={styles.actionButtonWrapper}
+                    activeOpacity={0.7}>
+                    <LinearGradient
+                      colors={[colors.border, colors.primaryLight]}
+                      start={{x: 0, y: 0}}
+                      end={{x: 1, y: 0}}
+                      style={styles.actionButton}>
+                      <Icon name="share" size={18} color={colors.textSecondary} />
+                      <Text style={styles.actionText}>Share</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
-        </LinearGradient>
+          </LinearGradient>
+        </Animated.View>
       </Animated.View>
-    </Animated.View>
+    </>
   );
-}
+});
 
 const styles = StyleSheet.create({
+  hiddenCard: {
+    position: 'absolute',
+    left: -9999,
+    top: -9999,
+    width: 380,
+    height: 520,
+  },
   cardWrapper: {
     flex: 1,
     paddingHorizontal: 32,
@@ -327,7 +396,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 28,
     padding: 2,
-    shadowColor: '#00E5FF',
+    shadowColor: colors.gradientCyan,
     shadowOffset: {width: 0, height: 8},
     shadowOpacity: 0.4,
     shadowRadius: 20,
@@ -344,7 +413,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  topBarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   progressDots: {
     flexDirection: 'row',
@@ -374,6 +447,20 @@ const styles = StyleSheet.create({
     color: colors.accent,
     letterSpacing: 0.5,
   },
+  copyButtonContainer: {
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
+  copyButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0, 229, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.3)',
+  },
   contentArea: {
     flex: 1,
     justifyContent: 'center',
@@ -399,12 +486,9 @@ const styles = StyleSheet.create({
     marginTop: -6,
   },
   questionText: {
-    fontSize: 22,
-    fontWeight: '700',
+    ...typography.question,
     color: colors.white,
     textAlign: 'center',
-    lineHeight: 30,
-    letterSpacing: -0.3,
     marginBottom: 8,
   },
   followUpSection: {
@@ -428,12 +512,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   followUpText: {
+    ...typography.followUp,
     fontSize: 15,
-    fontWeight: '500',
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
-    letterSpacing: -0.2,
+  },
+  watermark: {
+    position: 'absolute',
+    bottom: 80,
+    right: 20,
+    opacity: 0.3,
+  },
+  watermarkText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.accent,
+    letterSpacing: 1,
   },
   bottomSection: {
     gap: 12,
@@ -451,9 +545,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 5,
-  },
-  revealIcon: {
-    fontSize: 16,
   },
   revealButtonText: {
     fontSize: 15,
@@ -486,17 +577,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  iconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionIcon: {
-    fontSize: 18,
-    color: colors.textSecondary,
-  },
-  actionIconActive: {
-    color: colors.white,
-  },
   actionText: {
     fontSize: 13,
     fontWeight: '600',
@@ -505,11 +585,6 @@ const styles = StyleSheet.create({
   },
   actionTextActive: {
     color: colors.white,
-  },
-  swipeIndicator: {
-    flex: 0.6,
-    alignItems: 'center',
-    paddingHorizontal: 4,
   },
   swipeRow: {
     flexDirection: 'row',

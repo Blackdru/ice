@@ -1,48 +1,80 @@
-import React, {useCallback} from 'react';
+import React, {useCallback, useRef, useState} from 'react';
 import {
   View,
   Text,
   FlatList,
   StyleSheet,
   TouchableOpacity,
-  Share,
+  Alert,
+  Platform,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import Share from 'react-native-share';
+import ViewShot from 'react-native-view-shot';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import {colors} from '../theme/colors';
 import {typography} from '../theme/typography';
 import {Header} from '../components/Header';
+import {AdBanner} from '../components/AdBanner';
 import {useFavorites} from '../hooks/useFavorites';
 import {getCategoryById} from '../utils/questionEngine';
 import type {RootStackParamList} from '../navigation/AppNavigator';
-import type {Question} from '../data/questions';
+import type {FavoriteItem} from '../context/FavoritesContext';
+import {ShareableCard} from '../components/ShareableCard';
 
 type FavoritesScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Favorites'>;
 };
 
-interface FavoriteItem {
-  question: Question;
-  categoryId: string;
-}
-
 export function FavoritesScreen({navigation}: FavoritesScreenProps) {
   const insets = useSafeAreaInsets();
   const {favorites, removeFavorite, loading} = useFavorites();
+  // Lazy shareable card: only render when user requests share
+  const [sharingItemKey, setSharingItemKey] = useState<string | null>(null);
+  const shareableRef = useRef<ViewShot | null>(null);
 
-  const handleShare = useCallback(async (question: string) => {
+  const handleCopy = useCallback((question: string) => {
     try {
-      await Share.share({
-        message: `Conversation Starter:\n\n"${question}"\n\nShared from IceB`,
-      });
+      Clipboard.setString(question);
+      Alert.alert('Copied!', 'Question copied to clipboard');
     } catch {
-      // share cancelled
+      Alert.alert('Error', 'Failed to copy question');
     }
   }, []);
 
+  const handleShare = useCallback(async (itemKey: string) => {
+    // Set the sharing key to lazily render the ShareableCard
+    setSharingItemKey(itemKey);
+
+    // Wait a frame for the ShareableCard to mount and render
+    requestAnimationFrame(async () => {
+      try {
+        const ref = shareableRef.current;
+        if (ref && ref.capture) {
+          const uri = await ref.capture();
+          await Share.open({
+            url: Platform.OS === 'ios' ? uri : `file://${uri}`,
+            message: 'Check out this conversation starter from IceB!',
+          });
+        }
+      } catch (error: unknown) {
+        const shareError = error as {message?: string};
+        if (shareError?.message !== 'User did not share') {
+          console.error('Share error:', error);
+        }
+      } finally {
+        setSharingItemKey(null);
+      }
+    });
+  }, []);
+
   const renderItem = useCallback(
-    ({item, index: _index}: {item: FavoriteItem; index: number}) => {
+    ({item, index}: {item: FavoriteItem; index: number}) => {
       const category = getCategoryById(item.categoryId);
+      const itemKey = `${item.categoryId}_${item.question.id}_${index}`;
+
       return (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -62,16 +94,27 @@ export function FavoritesScreen({navigation}: FavoritesScreenProps) {
             <Text style={styles.followUpText}>{item.question.followup}</Text>
           )}
 
-          <TouchableOpacity
-            onPress={() => handleShare(item.question.question)}
-            style={styles.shareButton}
-            activeOpacity={0.7}>
-            <Text style={styles.shareText}>Share</Text>
-          </TouchableOpacity>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              onPress={() => handleCopy(item.question.question)}
+              style={styles.actionButton}
+              activeOpacity={0.7}>
+              <Icon name="content-copy" size={16} color={colors.primary} />
+              <Text style={styles.actionText}>Copy</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleShare(itemKey)}
+              style={styles.actionButton}
+              activeOpacity={0.7}>
+              <Icon name="share" size={16} color={colors.primary} />
+              <Text style={styles.actionText}>Share</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       );
     },
-    [removeFavorite, handleShare],
+    [removeFavorite, handleCopy, handleShare],
   );
 
   const EmptyState = useCallback(
@@ -86,6 +129,14 @@ export function FavoritesScreen({navigation}: FavoritesScreenProps) {
     ),
     [],
   );
+
+  // Find the question text for the currently sharing item
+  const sharingQuestion = sharingItemKey
+    ? favorites.find((_item, idx) => {
+        const key = `${_item.categoryId}_${_item.question.id}_${idx}`;
+        return key === sharingItemKey;
+      })
+    : null;
 
   if (loading) {
     return (
@@ -103,6 +154,16 @@ export function FavoritesScreen({navigation}: FavoritesScreenProps) {
         onBack={() => navigation.goBack()}
       />
 
+      {/* Lazy shareable card — only rendered when user taps Share */}
+      {sharingQuestion && (
+        <View style={styles.hiddenCard}>
+          <ShareableCard
+            ref={ref => { shareableRef.current = ref; }}
+            questionText={sharingQuestion.question.question}
+          />
+        </View>
+      )}
+
       <FlatList
         data={favorites}
         renderItem={renderItem}
@@ -112,11 +173,13 @@ export function FavoritesScreen({navigation}: FavoritesScreenProps) {
         contentContainerStyle={[
           styles.listContent,
           favorites.length === 0 && styles.emptyList,
-          {paddingBottom: insets.bottom + 20},
         ]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={EmptyState}
       />
+
+      {/* Fixed Banner Ad at bottom */}
+      <AdBanner style={{paddingBottom: insets.bottom}} />
     </View>
   );
 }
@@ -126,9 +189,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  hiddenCard: {
+    position: 'absolute',
+    left: -9999,
+    top: -9999,
+    width: 380,
+    height: 520,
+  },
   listContent: {
     paddingHorizontal: 20,
     paddingTop: 8,
+    paddingBottom: 20,
   },
   emptyList: {
     flex: 1,
@@ -170,14 +241,20 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginBottom: 12,
   },
-  shareButton: {
-    alignSelf: 'flex-start',
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: colors.primaryLight,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 10,
   },
-  shareText: {
+  actionText: {
     ...typography.captionMedium,
     color: colors.primary,
   },

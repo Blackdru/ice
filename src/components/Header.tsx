@@ -1,7 +1,7 @@
 import React from 'react';
 import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import {colors} from '../theme/colors';
+import {colors, gradientMain} from '../theme/colors';
 import {typography} from '../theme/typography';
 
 interface HeaderProps {
@@ -20,7 +20,7 @@ export function Header({title, subtitle, onBack, rightAction}: HeaderProps) {
             onPress={onBack}
             hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
             <LinearGradient
-              colors={['#FF6B9D', '#C471ED', '#00E5FF']}
+              colors={gradientMain}
               start={{x: 0, y: 0}}
               end={{x: 1, y: 1}}
               style={styles.backButton}>
